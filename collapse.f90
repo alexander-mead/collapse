@@ -27,6 +27,7 @@ PROGRAM collapse
   WRITE(*,*)
   WRITE(*,*) 'Spherical collapse integrator by Alexander Mead'
   WRITE(*,*) '==============================================='
+  WRITE(*,*)
 
   !Print out the collapse data or not
   !0 - No
@@ -66,13 +67,9 @@ PROGRAM collapse
   amax=3.
   vinit=1.*(dmin/ainit)
 
-  !Number of points for ODE calculations (needs to be large to capture final stages of collapse nicely)
-  !I tried doing a few clever things than this, but none worked well enough to beat the ignornant method
-  n=1e5
-
   !Do the linear growth factor calculation
   WRITE(*,*) 'Solving growth factor ODE'
-  CALL ode_adaptive(growth,v,a_growth,dmin,amax,dmin,vinit,fd,fv,0.0001,3,1)
+  CALL ode_adaptive(growth,v,a_growth,ainit,amax,dmin,vinit,fd,fv,0.0001,3,1)
   DEALLOCATE(v)
   !Do the linear logarithmic-growth rate calculation
   WRITE(*,*) 'Solving growth rate ODE'
@@ -80,15 +77,18 @@ PROGRAM collapse
   DEALLOCATE(v)
 
   !Table integration to calculate G(a)=int_0^a g(a')/a' da'
-  !Uses the trapezium rule
   ALLOCATE(bigG(SIZE(growth)))
   bigG=0.
   DO i=1,SIZE(growth)
-     bigG(i)=0.5*a_growth(1)*growth(1)
-     DO j=2,i
-        bigG(i)=bigG(i)+(a_growth(j)-a_growth(j-1))*(growth(j)/a_growth(j)+growth(j-1)/a_growth(j-1))/2.
-     END DO
-  END DO  
+     !Do the integral up to table position i
+     bigG(i)=inttab_range(a_growth,growth/a_growth,SIZE(growth),1,i,1)
+     !Add on the section that is missing from the beginning (NB. g(a=0)/0. = 1, so you just add on a rectangle of height g*a/a=g)
+     bigG(i)=bigG(i)+growth(1)
+  END DO
+
+  !Number of points for ODE calculations (needs to be large to capture final stages of collapse nicely)
+  !I tried doing a few clever things than this, but none worked well enough to beat the ignornant method
+  n=1e5
 
   !Now do the spherical-collapse calculation
   OPEN(8,file='dcDv.dat')
@@ -200,7 +200,7 @@ PROGRAM collapse
         h=find(ac,a_growth,bigG,3,3)
 
         !Write out results
-        WRITE(*,fmt='(I5,7F10.5)') j, ac, omega_m(ac), dc, Dv, g, f, h
+        WRITE(*,fmt='(I5,7F10.4)') j, ac, omega_m(ac), dc, Dv, g, f, h
         WRITE(8,*) ac, omega_m(ac), dc, Dv, g, f, h
 
         !Deallocate the radius arrays ready for the next calculation
@@ -510,11 +510,11 @@ CONTAINS
     WRITE(*,*) ' 8 - QUICC - AS'
     WRITE(*,*) ' 9 - QUICC - CNR'
     WRITE(*,*) '10 - Open or closed (Ov=0.)'
-    WRITE(*,*) '11 - General non-flat w(a)CDM'
+    WRITE(*,*) '11 - Non-flat w(a)CDM'
     WRITE(*,*) '12 - MG, constant mu'
     WRITE(*,*) '13 - Simpson mu parametrisation'
     WRITE(*,*) '14 - Flat blip dark energy'
-    WRITE(*,*) '15 - non-flat wCDM'
+    WRITE(*,*) '15 - Non-flat wCDM'
     WRITE(*,*) '16 - Flat DGP'
     WRITE(*,*) '17 - EdS DGP (Om_m=1.)'
     WRITE(*,*) '18 - Flat wCDM (constant w)'
@@ -608,7 +608,7 @@ CONTAINS
        om_v=0.
     ELSE IF(imod==11) THEN
        !Non-flat w(a)CDM
-       WRITE(*,*) 'General w(a)CDM'
+       WRITE(*,*) 'Non-flat w(a)CDM'
        WRITE(*,*) 'w(a)=w0+wa*(1.-a)'
        WRITE(*,*) 'w0:'
        READ(*,*) w0
@@ -655,7 +655,6 @@ CONTAINS
        WRITE(*,*) 'Non-flat wCDM'
        WRITE(*,*) 'Om_m:'
        READ(*,*) om_m
-       READ(*,*) w0
        WRITE(*,*) 'Om_w:'
        READ(*,*) om_w
        WRITE(*,*) 'w:'
@@ -1182,7 +1181,7 @@ CONTAINS
     !This reverses the contents of array arry!
     IMPLICIT NONE
     INTEGER, INTENT(IN) :: n
-    REAL, INTENT(IN) :: arry(n) 
+    REAL, INTENT(INOUT) :: arry(n) 
     REAL, ALLOCATABLE :: hold(:)
     INTEGER :: i
 
@@ -1511,5 +1510,128 @@ CONTAINS
     IF(ilog==1) arr=exp(arr)
 
   END SUBROUTINE fill_table
+
+  FUNCTION inttab_range(x,y,n,n1,n2,iorder)
+
+    !Integrates tables y(x)dx
+    IMPLICIT NONE
+    REAL :: inttab_range
+    INTEGER, INTENT(IN) :: n, n1, n2
+    REAL, INTENT(IN) :: x(n), y(n)
+    REAL :: a, b, c, d, h
+    REAL :: q1, q2, q3, qi, qf
+    REAL :: x1, x2, x3, x4, y1, y2, y3, y4, xi, xf
+    REAL*8 :: sum
+    INTEGER :: i, i1, i2, i3, i4
+    INTEGER, INTENT(IN) :: iorder
+
+    sum=0.d0
+
+    IF(n2<n1) STOP 'INTTAB_RANGE: Error n2 must be greater than n1'
+
+    IF(n1==n2) THEN
+
+       sum=0.d0
+    
+    ELSE IF(iorder==1) THEN
+
+       !Sums over all Trapezia (a+b)*h/2
+       DO i=n1,n2-1
+          a=y(i+1)
+          b=y(i)
+          h=x(i+1)-x(i)
+          sum=sum+(a+b)*h/2.d0
+       END DO
+
+    ELSE IF(iorder==2) THEN
+
+       DO i=n1,n2-2
+
+          x1=x(i)
+          x2=x(i+1)
+          x3=x(i+2)
+
+          y1=y(i)
+          y2=y(i+1)
+          y3=y(i+2)
+
+          CALL fit_quadratic(a,b,c,x1,y1,x2,y2,x3,y3)
+
+          q1=a*(x1**3.)/3.+b*(x1**2.)/2.+c*x1
+          q2=a*(x2**3.)/3.+b*(x2**2.)/2.+c*x2
+          q3=a*(x3**3.)/3.+b*(x3**2.)/2.+c*x3
+
+          !Takes value for first and last sections but averages over sections where you
+          !have two independent estimates of the area
+          IF(n==3) THEN
+             sum=sum+q3-q1
+          ELSE IF(i==1) THEN
+             sum=sum+(q2-q1)+(q3-q2)/2.d0
+          ELSE IF(i==n-2) THEN
+             sum=sum+(q2-q1)/2.d0+(q3-q2)
+          ELSE
+             sum=sum+(q3-q1)/2.
+          END IF
+
+       END DO
+
+    ELSE IF(iorder==3) THEN
+
+       DO i=n1,n2-1
+
+          !First choose the integers used for defining cubics for each section
+          !First and last are different because the section does not lie in the *middle* of a cubic
+
+          IF(i==1) THEN
+
+             i1=1
+             i2=2
+             i3=3
+             i4=4
+
+          ELSE IF(i==n-1) THEN
+
+             i1=n-3
+             i2=n-2
+             i3=n-1
+             i4=n
+
+          ELSE
+
+             i1=i-1
+             i2=i
+             i3=i+1
+             i4=i+2
+
+          END IF
+
+          x1=x(i1)
+          x2=x(i2)
+          x3=x(i3)
+          x4=x(i4)
+
+          y1=y(i1)
+          y2=y(i2)
+          y3=y(i3)
+          y4=y(i4)
+
+          CALL fit_cubic(a,b,c,d,x1,y1,x2,y2,x3,y3,x4,y4)
+
+          !These are the limits of the particular section of integral
+          xi=x(i)
+          xf=x(i+1)
+
+          qi=a*(xi**4.)/4.+b*(xi**3.)/3.+c*(xi**2.)/2.+d*xi
+          qf=a*(xf**4.)/4.+b*(xf**3.)/3.+c*(xf**2.)/2.+d*xf
+
+          sum=sum+qf-qi
+
+       END DO
+
+    END IF
+
+    inttab_range=sum
+
+  END FUNCTION inttab_range
 
 END PROGRAM collapse
