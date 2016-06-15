@@ -1,5 +1,4 @@
-# collapse
-Spherical-collapse model code
+# Spherical-collapse model code
 
 This code carries out the spherical-collapse calculation for standard cosmological models as well as for dark energy models when the dark energy can be taken to be spatially homogeneous. The calculation is valid on sub-horizon scales and takes a top-hat perturbation to exist in an otherwise featureless cosmos and follows its evolution into the non-linear regime where it reaches a maximum size and then recollapses. The code provides the user with the linear-collapse threshold (delta_c) and the virial overdensity (Delta_v) for the collapsed halo over a range of cosmic scale factors.
 
