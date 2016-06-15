@@ -99,7 +99,7 @@ PROGRAM collapse
 
      !Solve the ODEs for both the linear and non-linear growth
      !Do both integrations with the same 'a' range (ainit->amax) and using the same number of time steps
-     !This means that arrays a, and anl will be identical, which simplifies the later calculation
+     !This means that arrays 'a', and 'anl' will be identical, which simplifies the later calculation
      CALL ode_crass(dnl,vnl,a,ainit,amax,dinit,vinit,fd,fvnl,n,3,1)
      DEALLOCATE(a)
      CALL ode_crass(d,v,a,ainit,amax,dinit,vinit,fd,fv,n,3,1)
@@ -158,20 +158,21 @@ PROGRAM collapse
         !Now to Delta_v calculation
 
         !Find the 'a' value when the perturbation is maximum size
+        !I could imagine models where the perturbation has mulitple maxima, so this might be correct for these models
         a_rmax=maximum(a,rnl,k)
 
         !Find the over-density at this point
-        d_rmax=exp(find(log(a_rmax),log(a),log(dnl),1,3))
+        d_rmax=exp(find(log(a_rmax),log(a),log(dnl),k,1,3))
 
         !Find the maximum radius
-        rmax=find(log(a_rmax),log(a),rnl,1,3)
+        rmax=find(log(a_rmax),log(a),rnl,k,1,3)
 
         !The radius of the perturbation when it is virialised is half maximum is the EdS condition
         rv=rmax/2.
 
         !Need to assign new arrays for the collapse branch of r such that it is monotonic
         !There could be trouble here in DE models where the perurbation may stop growing and then start growing again
-        k2=int_split(d_rmax,dnl)
+        k2=int_split(d_rmax,dnl,SIZE(dnl))
 
         !Allocate collapse branch arrays
         ALLOCATE(a_coll(k-k2+1),r_coll(k-k2+1))
@@ -183,7 +184,7 @@ PROGRAM collapse
         END DO
 
         !Find the scale factor when the perturbation has reached virial radius
-        av=exp(find(rv,r_coll,log(a_coll),3,3))
+        av=exp(find(rv,r_coll,log(a_coll),SIZE(r_coll),3,3))
 
         !Deallocate collapse branch arrays
         DEALLOCATE(a_coll,r_coll)
@@ -191,13 +192,13 @@ PROGRAM collapse
         !Spherical model approximation is that perturbation is at virial radius when
         !'collapse' is considered to have occured, the time of which has already been calculated
         !So Dv can now be found
-        Dv=exp(find(log(av),log(a),log(dnl),1,3))*(ac/av)**3.
+        Dv=exp(find(log(av),log(a),log(dnl),k,1,3))*(ac/av)**3.
         Dv=Dv+1.
 
         !Get the values of the growth function, log-growth rate and integrated growth
-        g=find(ac,a_growth,growth,3,3)
-        f=find(ac,a_rate,rate,3,3)
-        h=find(ac,a_growth,bigG,3,3)
+        g=find(ac,a_growth,growth,SIZE(a_growth),3,3)
+        f=find(ac,a_rate,rate,SIZE(a_growth),3,3)
+        h=find(ac,a_growth,bigG,SIZE(a_growth),3,3)
 
         !Write out results
         WRITE(*,fmt='(I5,7F10.4)') j, ac, omega_m(ac), dc, Dv, g, f, h
@@ -352,7 +353,7 @@ CONTAINS
 
        ELSE IF(imeth==3) THEN
 
-          !RK4 (Holy Christ, this is so fast compared to above methods)!
+          !RK4 (Holy smoke, this is so fast compared to above methods)!
           kx1=dt*fx(x4,v4,t4)
           kv1=dt*fv(x4,v4,t4)
           kx2=dt*fx(x4+kx1/2.,v4+kv1/2.,t4+dt/2.)
@@ -513,7 +514,7 @@ CONTAINS
     WRITE(*,*) '11 - Non-flat w(a)CDM'
     WRITE(*,*) '12 - MG, constant mu'
     WRITE(*,*) '13 - Simpson mu parametrisation'
-    WRITE(*,*) '14 - Flat blip dark energy'
+    !WRITE(*,*) '14 - Blip dark energy'
     WRITE(*,*) '15 - Non-flat wCDM'
     WRITE(*,*) '16 - Flat DGP'
     WRITE(*,*) '17 - EdS DGP (Om_m=1.)'
@@ -817,12 +818,13 @@ CONTAINS
 
     !Calculates the dimensionless squared hubble parameter at 'a'
     IMPLICIT NONE
-    REAL :: H2, a
-
+    REAL :: H2
+    REAL, INTENT(IN) :: a
+    
     !Ignores contributions from radiation (not accurate at high z)!
     !It is also dimensionless (no H_0 factors)
     
-    H2=om_m*(a**(-3.))+om_w*x(a)+om_v+(1.-om_m-om_w-om_v)*(a**(-2.))
+    H2=om_m*(a**(-3.))+om_w*X(a)+om_v+(1.-om_m-om_w-om_v)*(a**(-2.))
 
   END FUNCTION H2
 
@@ -830,7 +832,8 @@ CONTAINS
 
     !This calculates omega_m(a)
     IMPLICIT NONE
-    REAL :: omega_m, a
+    REAL :: omega_m
+    REAL, INTENT(IN) :: a
 
     omega_m=om_m*(a**(-3.))/H2(a)
 
@@ -840,7 +843,8 @@ CONTAINS
 
     !This calculates omega_c(a)
     IMPLICIT NONE
-    REAL :: omega_c, a
+    REAL :: omega_c
+    REAL, INTENT(IN) :: a
 
     omega_c=om_c*(a**(-3.))/H2(a)
 
@@ -850,7 +854,8 @@ CONTAINS
 
     !This calculates omega_nu(a)
     IMPLICIT NONE
-    REAL :: omega_nu, a
+    REAL :: omega_nu
+    REAL, INTENT(IN) :: a
 
     omega_nu=om_nu*(a**(-3.))/H2(a)
 
@@ -860,10 +865,11 @@ CONTAINS
 
     !This calculates omega_w(a)
     IMPLICIT NONE
-    REAL :: omega_w, a
+    REAL :: omega_w
+    REAL, INTENT(IN) :: a
 
-    !x(a) is the redshift scaling
-    omega_w=om_w*x(a)/H2(a)
+    !X(a) is the redshift scaling of the dark energy
+    omega_w=om_w*X(a)/H2(a)
 
   END FUNCTION omega_w
 
@@ -871,7 +877,8 @@ CONTAINS
 
     !This calculates omega_v(a)!
     IMPLICIT NONE
-    REAL :: omega_v, a
+    REAL :: omega_v
+    REAL, INTENT(IN) :: a
 
     omega_v=om_v/H2(a)
 
@@ -881,7 +888,8 @@ CONTAINS
 
     !\ddot a/a
     IMPLICIT NONE
-    REAL :: AH, a
+    REAL :: AH
+    REAL, INTENT(IN) :: a
 
     !Gets no contribution from curvature
 
@@ -890,36 +898,38 @@ CONTAINS
 
   END FUNCTION AH
 
-  FUNCTION x(a)
+  FUNCTION X(a)
 
-    !Redshift scaling for dark energy (i.e., if w=0 x(a)=a^-3, if w=-1 x(a)=const etc.)
+    !Redshift scaling for dark energy (i.e., if w=0 X(a)=a^-3, if w=-1 X(a)=const etc.)
     IMPLICIT NONE
-    REAL :: x, a
+    REAL :: X
+    REAL, INTENT(IN) :: a
 
     IF(iw==0) THEN
-       !LCDM
-       x=1.   
+       !Vacuum
+       X=1.   
     ELSE IF(iw==1) THEN
        !Generally true, doing this integration makes the spherical-collapse calculation very slow
-       x=(a**(-3.))*exp(3.*integrate(a,1.,integrand,0.001,1))
+       X=(a**(-3.))*exp(3.*integrate(a,1.,integrand,0.001,1))
     ELSE IF(iw==2) THEN
        !w(a)CDM
-       x=(a**(-3.*(1.+w0+wa)))*exp(-3.*wa*(1.-a))
+       X=(a**(-3.*(1.+w0+wa)))*exp(-3.*wa*(1.-a))
     ELSE IF(iw==3) THEN
        !wCDM
-       x=a**(-3.*(1.+w0))
+       X=a**(-3.*(1.+w0))
     ELSE IF(iw==4) THEN
        !Blip dark energy
-       x=(((a/astar)**nblip+1.)/((1./astar)**nblip+1.))**(-6./nblip)
+       X=(((a/astar)**nblip+1.)/((1./astar)**nblip+1.))**(-6./nblip)
     END IF
 
-  END FUNCTION x
+  END FUNCTION X
 
   FUNCTION integrand(a)
 
     !The integrand for one of my integrals
     IMPLICIT NONE
-    REAL :: integrand, a
+    REAL :: integrand
+    REAL, INTENT(IN) :: a
 
     integrand=w(a)/a
 
@@ -929,11 +939,12 @@ CONTAINS
 
     !Variations of the dark energy parameter w(a)
     IMPLICIT NONE
-    REAL :: w, a
+    REAL :: w
+    REAL, INTENT(IN) :: a
     REAL :: p1, p2, p3, p4
 
     IF(iw==0) THEN
-       !LCDM
+       !Vacuum
        w=-1.
     ELSE IF(iw==1) THEN
        !QUICC parameterisation
@@ -955,17 +966,17 @@ CONTAINS
 
   END FUNCTION w
 
-  FUNCTION find(x,xin,yin,iorder,imeth)
+  FUNCTION find(x,xin,yin,n,iorder,imeth)
 
-    !Interpolation routine
     IMPLICIT NONE
     REAL :: find
-    REAL, INTENT(IN) :: x, xin(:), yin(:)
+    INTEGER, INTENT(IN) :: n
+    REAL, INTENT(IN) :: x, xin(n), yin(n)
     REAL, ALLOCATABLE ::  xtab(:), ytab(:)
     REAL :: a, b, c, d
     REAL :: x1, x2, x3, x4
     REAL :: y1, y2, y3, y4
-    INTEGER :: i, n
+    INTEGER :: i
     INTEGER, INTENT(IN) :: imeth, iorder
     INTEGER :: maxorder, maxmethod
 
@@ -983,11 +994,9 @@ CONTAINS
     !iorder = 2 => quadratic interpolation
     !iorder = 3 => cubic interpolation
 
-    maxorder=3
-    maxmethod=3
+    !maxorder=3
+    !maxmethod=3
 
-    n=SIZE(xin)
-    IF(n .NE. SIZE(yin)) STOP 'FIND: Tables not of the same size'
     ALLOCATE(xtab(n),ytab(n))
 
     xtab=xin
@@ -999,12 +1008,9 @@ CONTAINS
        CALL reverse(ytab,n)
     END IF
 
-    IF(iorder<1) STOP 'FIND: find order not specified correctly'
-    IF(iorder>maxorder) STOP 'FIND: find order not specified correctly'
-    IF(imeth<1) STOP 'FIND: Method of finding within a table not specified correctly'
-    IF(imeth>maxmethod) STOP 'FIND: Method of finding within a table not specified correctly'
-
     IF(x<xtab(1)) THEN
+
+       !Do a linear interpolation beyond the table boundary
 
        x1=xtab(1)
        x2=xtab(2)
@@ -1017,6 +1023,8 @@ CONTAINS
        
     ELSE IF(x>xtab(n)) THEN
 
+       !Do a linear interpolation beyond the table boundary
+       
        x1=xtab(n-1)
        x2=xtab(n)
 
@@ -1048,10 +1056,8 @@ CONTAINS
 
        ELSE
 
-          IF(imeth==1) i=search_int(x,xtab)
-          IF(imeth==2) i=linear_table_integer(x,xtab)
-          IF(imeth==3) i=int_split(x,xtab)
-
+          i=table_integer(x,xtab,n,imeth)
+          
           x1=xtab(i)
           x2=xtab(i+1)
 
@@ -1097,9 +1103,7 @@ CONTAINS
 
        ELSE
 
-          IF(imeth==1) i=search_int(x,xtab)
-          IF(imeth==2) i=linear_table_integer(x,xtab)
-          IF(imeth==3) i=int_split(x,xtab)
+          i=table_integer(x,xtab,n,imeth)
 
           x1=xtab(i-1)
           x2=xtab(i)
@@ -1153,9 +1157,7 @@ CONTAINS
 
        ELSE
 
-          IF(imeth==1) i=search_int(x,xtab)
-          IF(imeth==2) i=linear_table_integer(x,xtab)
-          IF(imeth==3) i=int_split(x,xtab)
+          i=table_integer(x,xtab,n,imeth)
 
           x1=xtab(i-1)
           x2=xtab(i)
@@ -1172,45 +1174,47 @@ CONTAINS
        CALL fit_cubic(a,b,c,d,x1,y1,x2,y2,x3,y3,x4,y4)
        find=a*x**3.+b*x**2.+c*x+d
 
+    ELSE
+
+       STOP 'FIND: Error, interpolation order specified incorrectly'
+
     END IF
 
   END FUNCTION find
 
-  SUBROUTINE reverse(arry,n)
+  FUNCTION table_integer(x,xtab,n,imeth)
 
-    !This reverses the contents of array arry!
     IMPLICIT NONE
+    INTEGER :: table_integer
     INTEGER, INTENT(IN) :: n
-    REAL, INTENT(INOUT) :: arry(n) 
-    REAL, ALLOCATABLE :: hold(:)
-    INTEGER :: i
+    REAL, INTENT(IN) :: x, xtab(n)
+    INTEGER, INTENT(IN) :: imeth
 
-    ALLOCATE(hold(n))
+    IF(imeth==1) THEN
+       table_integer=linear_table_integer(x,xtab,n)
+    ELSE IF(imeth==2) THEN
+       table_integer=search_int(x,xtab,n)
+    ELSE IF(imeth==3) THEN
+       table_integer=int_split(x,xtab,n)
+    ELSE
+       STOP 'TABLE INTEGER: Method specified incorrectly'
+    END IF
 
-    hold=arry
+  END FUNCTION table_integer
 
-    DO i=1,n
-       arry(i)=hold(n-i+1)
-    END DO
-
-    DEALLOCATE(hold)
-
-  END SUBROUTINE reverse
-
-    FUNCTION linear_table_integer(x,xtab)
+  FUNCTION linear_table_integer(x,xtab,n)
 
     IMPLICIT NONE
     INTEGER :: linear_table_integer
-    REAL, INTENT(IN) :: x, xtab(:)
-    INTEGER :: n
+    INTEGER, INTENT(IN) :: n
+    REAL, INTENT(IN) :: x, xtab(n)
     REAL :: x1, x2, xn
     REAL :: acc
 
     !Returns the integer (table position) below the value of x
-    !eg. if x(3)=6. and x(4)=7. and x=6.5 this will return 3
+    !eg. if x(3)=6. and x(4)=7. and x=6.5 this will return 6
     !Assumes table is organised linearly (care for logs)
 
-    n=SIZE(xtab)
     x1=xtab(1)
     x2=xtab(2)
     xn=xtab(n)
@@ -1225,14 +1229,13 @@ CONTAINS
 
   END FUNCTION linear_table_integer
 
-  FUNCTION search_int(x,xtab)
+  FUNCTION search_int(x,xtab,n)
 
     IMPLICIT NONE
     INTEGER :: search_int
-    INTEGER :: i, n
-    REAL, INTENT(IN) :: x, xtab(:)
-
-    n=SIZE(xtab)
+    INTEGER, INTENT(IN) :: n
+    REAL, INTENT(IN) :: x, xtab(n)
+    INTEGER :: i
 
     IF(xtab(1)>xtab(n)) STOP 'SEARCH_INT: table in wrong order'
 
@@ -1244,15 +1247,15 @@ CONTAINS
 
   END FUNCTION search_int
 
-  FUNCTION int_split(x,xtab)
+  FUNCTION int_split(x,xtab,n)
+
+    IMPLICIT NONE
+    INTEGER :: int_split
+    INTEGER, INTENT(IN) :: n
+    REAL, INTENT(IN) :: x, xtab(n)
+    INTEGER :: i1, i2, imid
 
     !Finds the position of the value in the table by continually splitting it in half
-    IMPLICIT NONE
-    REAL, INTENT(IN) :: x, xtab(:)
-    INTEGER :: i1, i2, imid, n
-    INTEGER :: int_split
-    
-    n=SIZE(xtab)
 
     IF(xtab(1)>xtab(n)) STOP 'INT_SPLIT: table in wrong order'
 
@@ -1260,7 +1263,7 @@ CONTAINS
     i2=n
 
     DO
-
+       
        imid=NINT((i1+i2)/2.)
 
        IF(x<xtab(imid)) THEN
@@ -1272,17 +1275,18 @@ CONTAINS
        IF(i2==i1+1) EXIT
 
     END DO
-
+    
     int_split=i1
 
   END FUNCTION int_split
 
   SUBROUTINE fit_line(a1,a0,x1,y1,x2,y2)
 
-    !Given xi, yi i=1,2 fits a line between these points
     IMPLICIT NONE
     REAL, INTENT(OUT) :: a0, a1
     REAL, INTENT(IN) :: x1, y1, x2, y2
+
+    !Given xi, yi i=1,2 fits a line between these points
 
     a1=(y2-y1)/(x2-x1)
     a0=y1-a1*x1
@@ -1291,10 +1295,11 @@ CONTAINS
 
   SUBROUTINE fit_quadratic(a2,a1,a0,x1,y1,x2,y2,x3,y3)
 
-    !Given xi, yi i=1,2,3 fits a quadratic between these points
     IMPLICIT NONE
     REAL, INTENT(OUT) :: a0, a1, a2
-    REAL, INTENT(IN) :: x1, y1, x2, y2, x3, y3  
+    REAL, INTENT(IN) :: x1, y1, x2, y2, x3, y3
+
+    !Given xi, yi i=1,2,3 fits a quadratic between these points
 
     a2=((y2-y1)/(x2-x1)-(y3-y1)/(x3-x1))/(x2-x3)
     a1=(y2-y1)/(x2-x1)-a2*(x2+x1)
@@ -1304,11 +1309,12 @@ CONTAINS
 
   SUBROUTINE fit_cubic(a,b,c,d,x1,y1,x2,y2,x3,y3,x4,y4)
 
-    !Given xi, yi i=1,2,3,4 fits a cubic between these points
     IMPLICIT NONE
     REAL, INTENT(OUT) :: a, b, c, d
     REAL, INTENT(IN) :: x1, y1, x2, y2, x3, y3, x4, y4
     REAL :: f1, f2, f3
+
+    !Given xi, yi i=1,2,3,4 fits a cubic between these points
 
     f1=(y4-y1)/((x4-x2)*(x4-x1)*(x4-x3))
     f2=(y3-y1)/((x3-x2)*(x3-x1)*(x4-x3))
@@ -1331,6 +1337,28 @@ CONTAINS
     d=y1-a*x1**3.-b*x1**2.-c*x1
 
   END SUBROUTINE fit_cubic
+
+  SUBROUTINE reverse(arry,n)
+
+    IMPLICIT NONE
+    INTEGER, INTENT(IN) :: n
+    REAL, INTENT(INOUT) :: arry(n)
+    INTEGER :: i
+    REAL, ALLOCATABLE :: hold(:) 
+
+    !This reverses the contents of arry!
+
+    ALLOCATE(hold(n))
+
+    hold=arry
+
+    DO i=1,n
+       arry(i)=hold(n-i+1)
+    END DO
+
+    DEALLOCATE(hold)
+
+  END SUBROUTINE reverse
 
   SUBROUTINE ode_adaptive(x,v,t,ti,tf,xi,vi,fx,fv,acc,imeth,ilog)
 
@@ -1408,7 +1436,7 @@ CONTAINS
 
           ELSE IF(imeth==3) THEN
 
-             !RK4 (Holy Christ, this is so fast compared to above methods)!
+             !RK4 (Holy smoke, this is so fast compared to above methods)!
              kx1=dt*fx(x4,v4,t4)
              kv1=dt*fv(x4,v4,t4)
              kx2=dt*fx(x4+kx1/2.,v4+kv1/2.,t4+dt/2.)
@@ -1481,7 +1509,6 @@ CONTAINS
     REAL, ALLOCATABLE :: arr(:)
     INTEGER, INTENT(IN) :: ilog, n
 
-    
     !ilog=0 does linear spacing
     !ilog=1 does log spacing
 
