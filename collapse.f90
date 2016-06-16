@@ -88,9 +88,12 @@ PROGRAM collapse
 
   !Number of points for ODE calculations (needs to be large to capture final stages of collapse nicely)
   !I tried doing a few clever things than this, but none worked well enough to beat the ignornant method
-  n=1e5
+  n=100000
 
   !Now do the spherical-collapse calculation
+  !WRITE(*,fmt='(I5,7F10.4)') j, ac, omega_m(ac), dc, Dv, g, f, h
+  WRITE(*,*) '   i         a      Om_m        dc        Dv         g         f         G'
+  WRITE(*,*) '=========================================================================='
   OPEN(8,file='dcDv.dat')
   DO j=1,m
 
@@ -247,6 +250,8 @@ CONTAINS
           maximum=-b/(2.*a)
 
           EXIT
+       !ELSE IF(i==n-1) THEN
+       !   STOP 'MAXIMUM: Error, maximum not found'
        END IF
     END DO
 
@@ -463,6 +468,8 @@ CONTAINS
        mu=mua*omega_w(a)/om_w
     ELSE IF(img==3) THEN
        mu=1./(3.*beta(a))
+    ELSE
+       STOP 'Modified gravity model not defined properly'
     END IF
 
   END FUNCTION mu
@@ -514,7 +521,7 @@ CONTAINS
     WRITE(*,*) '11 - Non-flat w(a)CDM'
     WRITE(*,*) '12 - MG, constant mu'
     WRITE(*,*) '13 - Simpson mu parametrisation'
-    !WRITE(*,*) '14 - Blip dark energy'
+    WRITE(*,*) '14 - Blip dark energy'
     WRITE(*,*) '15 - Non-flat wCDM'
     WRITE(*,*) '16 - Flat DGP'
     WRITE(*,*) '17 - EdS DGP (Om_m=1.)'
@@ -803,6 +810,7 @@ CONTAINS
              EXIT
           ELSE IF(j==jmax) THEN
              WRITE(*,*) 'Integration timed out:', a, b
+             STOP
           ELSE
              sum1=sum2
              sum2=0.d0
@@ -920,6 +928,8 @@ CONTAINS
     ELSE IF(iw==4) THEN
        !Blip dark energy
        X=(((a/astar)**nblip+1.)/((1./astar)**nblip+1.))**(-6./nblip)
+    ELSE
+       STOP 'Dark energy model not defined'
     END IF
 
   END FUNCTION X
@@ -962,6 +972,8 @@ CONTAINS
     ELSE IF(iw==4) THEN
        !Blip dark energy
        w=((a/astar)**nblip-1.)/((a/astar)**nblip+1.)
+    ELSE
+       STOP 'Dark energy model not defined'
     END IF
 
   END FUNCTION w
@@ -978,7 +990,6 @@ CONTAINS
     REAL :: y1, y2, y3, y4
     INTEGER :: i
     INTEGER, INTENT(IN) :: imeth, iorder
-    INTEGER :: maxorder, maxmethod
 
     !This version interpolates if the value is off either end of the array!
     !Care should be chosen to insert x, xtab, ytab as log if this might give better!
@@ -993,9 +1004,6 @@ CONTAINS
     !iorder = 1 => linear interpolation
     !iorder = 2 => quadratic interpolation
     !iorder = 3 => cubic interpolation
-
-    !maxorder=3
-    !maxmethod=3
 
     ALLOCATE(xtab(n),ytab(n))
 
