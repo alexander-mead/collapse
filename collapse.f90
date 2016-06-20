@@ -32,7 +32,7 @@ PROGRAM collapse
   !Print out the collapse data or not
   !0 - No
   !1 - Yes
-  icol=1
+  icol=0
 
   !Assign the cosmological model
   CALL assign_cosmology
